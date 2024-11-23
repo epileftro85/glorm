@@ -1,0 +1,88 @@
+glorm
+	--internal
+		--factory
+			clients_factory.go
+		--models
+			db_config.go
+			query_structure.go
+		--query_creator
+			i_query_creator.go
+		--strategies
+			postgres_strategy.go
+	--pkg
+		--utils
+	--tests
+	glorm.go ->main app file
+
+My app is meant to be a query builder. As is pointed glorm.go is the public api all internal will be hidden, so, when a user wants to insert data in order to use the builder
+inside glorm the user has to use public methods.
+So, now I need to make insert, update, delete, etc functions, but I do not want to have them all inside glorm file
+is there a way to expose them from another file, I need a builder pattern
+
+This is glorm looks like
+type queryBuilderFunc func(data *models.QueryStructure) (string, []interface{}, error)
+type Glorm struct {
+	config         *models.Config
+	queryStructure *models.QueryStructure
+	factory        *factory.ClientsFactory
+}
+func Builder(db *sql.DB) *Glorm {
+	useTimestamps, created, updated := utils.ConfigTimestamps()
+	factory.NewClientBuilderFactory()
+	return &Glorm{
+		config: &models.Config{
+			Db:             db,
+			UseTimestamps:  useTimestamps,
+			DbType:         utils.SetDBType(),
+			TimestampsName: []string{created, updated},
+		},
+		queryStructure: &models.QueryStructure{
+			InsertData:     make(map[string]interface{}),
+			WhereClauses:   []string{},
+			Fields:         []string{},
+			ReturnedValues: []string{},
+			Joins:          []string{},
+		},
+	}
+}
+func (s *Glorm) setTimestamps(bothTimestamps bool) {
+	if bothTimestamps {
+		s.queryStructure.InsertData[s.config.TimestampsName[0]] = "NOW()"
+		s.queryStructure.InsertData[s.config.TimestampsName[1]] = "NOW()"
+	} else {
+		s.queryStructure.InsertData[s.config.TimestampsName[1]] = "NOW()"
+	}
+}
+func (s *Glorm) getBuilders() (map[consts.QueryType]queryBuilderFunc, error) {
+	builder, err := s.factory.Build(s.config.DbType)
+	if err != nil {
+		return nil, err
+	}
+	return map[consts.QueryType]queryBuilderFunc{
+		consts.SelectQuery: builder.CreateSelect,
+	}, nil
+}
+func (s *Glorm) getQueryAndParams() (string, []interface{}, error) {
+	builder, err := s.getBuilders()
+	if err != nil {
+		log.Fatalf("Error getting builder: %v", err)
+		return "fail", nil, err
+
+	}
+	query, args, err := builder[s.queryStructure.QueryType](s.queryStructure)
+
+	if err != nil {
+		log.Fatalf("Error getting the query builder with Error: %v", err)
+		return "fail", nil, err
+	}
+
+	return query, args, nil
+}
+func (s *Glorm) Exec() (sql.Result, error) {
+	query, args, err := s.getQueryAndParams()
+	if err != nil {
+		log.Fatalf("Error getting the query: %v", err)
+		return nil, err
+	}
+	return s.config.Db.Exec(query, args...)
+}
