@@ -8,5 +8,6 @@ import (
 
 type QueryCreator interface {
 	CreateSelect(structure *models.QueryStructure) (string, []interface{}, error)
+	CreateUpdate(structure *models.QueryStructure) (string, []interface{}, error)
 	Execute(config *models.Config, query string, args ...interface{}) (sql.Result, error)
 }

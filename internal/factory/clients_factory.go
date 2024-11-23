@@ -24,7 +24,8 @@ func NewClientBuilderFactory() *ClientsFactory {
 func (f *ClientsFactory) Build(dbType consts.DatabaseType) (query_creator.QueryCreator, error) {
 	builder, ok := f.builders[dbType]
 	if !ok {
-		return nil, errors.New(fmt.Sprintf("database type %s is not supported", dbType))
+		message := fmt.Sprintf("database type %s is not supported", dbType)
+		return nil, errors.New(message)
 	}
 
 	return builder, nil

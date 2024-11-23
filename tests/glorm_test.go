@@ -2,31 +2,21 @@ package tests
 
 import (
 	"database/sql"
-	"reflect"
-	"strings"
 	"testing"
 
 	"github.com/epileftro85/glorm"
-	"github.com/epileftro85/glorm/pkg/utils"
+	"github.com/epileftro85/glorm/internal/consts"
+	"github.com/stretchr/testify/assert"
 )
 
 var db *sql.DB
-
-func getQueryStructureItem(g *glorm.Glorm, item string) reflect.Value {
-	v := reflect.ValueOf(g).Elem()
-	return v.FieldByName("queryStructure").Elem().FieldByName(item)
-}
 
 func TestGlormBuilderTable(t *testing.T) {
 	builder := glorm.Builder(db)
 	tableName := "some_table"
 	builder.Table(tableName)
 
-	tableField := getQueryStructureItem(builder, "Table")
-
-	if tableName != tableField.String() {
-		t.Errorf("expected %s, got %s", tableName, tableField)
-	}
+	assert.Equal(t, tableName, builder.QueryStructure.Table)
 }
 
 func TestGlormBuilderReturning(t *testing.T) {
@@ -34,42 +24,54 @@ func TestGlormBuilderReturning(t *testing.T) {
 	returning := []string{"id", "name"}
 	builder.Returning(returning)
 
-	returnedField := getQueryStructureItem(builder, "ReturnedValues")
-
-	var actualValues []string
-	for i := 0; i < returnedField.Len(); i++ {
-		actualValues = append(actualValues, returnedField.Index(i).String())
-	}
-
-	got := strings.Join(actualValues, ",")
-	expected := strings.Join(returning, ",")
-
-	if expected != got {
-		t.Errorf("expected %s, got %s", expected, got)
-	}
+	assert.Equal(t, returning, builder.QueryStructure.ReturnedValues)
 }
 
 func TestGlormBuilderSelect(t *testing.T) {
 	builder := glorm.Builder(db)
 	selectItems := []string{"id", "name"}
 	builder.Select(selectItems)
-	selectField := getQueryStructureItem(builder, "Fields")
-	queryType := getQueryStructureItem(builder, "QueryType")
 
-	var actualValues []string
-	for i := 0; i < selectField.Len(); i++ {
-		actualValues = append(actualValues, selectField.Index(i).String())
-	}
+	assert.Equal(t, selectItems, builder.QueryStructure.Fields)
+	assert.Equal(t, consts.QueryType("SELECT"), builder.QueryStructure.QueryType)
+}
 
-	got := strings.Join(actualValues, ",")
-	expected := strings.Join(selectItems, ",")
+func TestGlormBuilderDelete(t *testing.T) {
+	builder := glorm.Builder(db)
+	builder.Delete()
 
-	if expected != got {
-		t.Errorf("expected %s, got %s", expected, got)
-	}
-	if queryType.String() != "SELECT" {
-		t.Errorf("expected query type %s, got %s", "SELECT", queryType.String())
-	}
+	assert.Equal(t, consts.QueryType("DELETE"), builder.QueryStructure.QueryType)
+}
+
+func TestGlormBuilderCount(t *testing.T) {
+	builder := glorm.Builder(db)
+	builder.Count()
+
+	assert.Equal(t, consts.QueryType("COUNT"), builder.QueryStructure.QueryType)
+}
+
+func TestGlormBuilderOrder(t *testing.T) {
+	builder := glorm.Builder(db)
+	orderBy := "id"
+	builder.OrderBy(orderBy)
+
+	assert.Equal(t, orderBy, builder.QueryStructure.OrderBy)
+}
+
+func TestGlormBuilderLimit(t *testing.T) {
+	builder := glorm.Builder(db)
+	limit := 10
+	builder.Limit(limit)
+
+	assert.Equal(t, limit, builder.QueryStructure.Limit)
+}
+
+func TestGlormBuilderOffset(t *testing.T) {
+	builder := glorm.Builder(db)
+	offset := 100
+	builder.Offset(offset)
+
+	assert.Equal(t, offset, builder.QueryStructure.Offset)
 }
 
 func TestGlormBuilderInsert(t *testing.T) {
@@ -79,15 +81,45 @@ func TestGlormBuilderInsert(t *testing.T) {
 		"last": "Clavijo",
 	}
 	builder.Insert(fields)
-	selectField := getQueryStructureItem(builder, "InsertData")
-	queryType := getQueryStructureItem(builder, "QueryType")
-
-	if queryType.String() != "INSERT" {
-		t.Errorf("expected query type %s, got %s", "INSERT", queryType.String())
+	expected := map[string]interface{}{
+		"name":       "Andres",
+		"last":       "Clavijo",
+		"created_at": "NOW()",
+		"updated_at": "NOW()",
 	}
+	assert.Equal(t, expected, builder.QueryStructure.InsertData)
+}
 
-	comparables, _ := utils.ConvertMap(selectField)
-	if !utils.CompareMaps(fields, comparables) {
-		t.Errorf("CreateSelect() = %v; args want %v", fields, comparables)
+func TestGlormBuilderUpdate(t *testing.T) {
+	builder := glorm.Builder(db)
+	fields := map[string]interface{}{
+		"name": "Andrew",
+		"last": "Clavijo",
 	}
+	builder.Update(fields)
+	expected := map[string]interface{}{
+		"name":       "Andrew",
+		"last":       "Clavijo",
+		"updated_at": "NOW()",
+	}
+	assert.Equal(t, expected, builder.QueryStructure.InsertData)
+}
+
+func TestGlormWhere(t *testing.T) {
+	builder := glorm.Builder(db)
+	condition := "id ="
+	values := []interface{}{
+		"10",
+	}
+	builder.Where(condition, values...)
+	assert.Equal(t, []string([]string{condition}), builder.QueryStructure.WhereClauses)
+	assert.Equal(t, values, builder.QueryStructure.Values)
+}
+
+func TestGlormJoin(t *testing.T) {
+	builder := glorm.Builder(db)
+	table, key1, key2 := "some_table", "table_one.one", "table_two.two"
+	builder.Join(table, key1, key2)
+
+	assert.Equal(t, []string([]string{"JOIN some_table ON table_one.one = table_two.two"}), builder.QueryStructure.Joins)
 }
